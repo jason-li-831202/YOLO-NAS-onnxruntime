@@ -99,13 +99,13 @@ cmake --build .
 * ***Run video source from CLI*** :
 
   ```bash
-  ./demo --model_path ../models/yolo_nas_s.onnx --video ../demo/video-1.mp4 --class_names ../models/coco.names --gpu
+  ./demo --model_path ../models/yolo_nas_s.onnx --video ../demo/video.mp4 --class_names ../models/coco.names --gpu
   ```
 
 * ***Run image source from CLI*** :
 
   ```bash
-  ./demo --model_path ../models/yolo_nas_s.onnx --image ../demo/bus.jpg --class_names ../models/coco.names --gpu
+  ./demo --model_path ../models/yolo_nas_s.onnx --image ../demo/traffic.jpg --class_names ../models/coco.names --gpu
   ```
 
 <h1 id="Demo">➤ Demo</h1>
