@@ -79,7 +79,7 @@ int main(int argc, char* argv[])
     {
         cv::VideoCapture cap(sourcePath);
         if (!cap.isOpened()) {
-            LOG(ERROR) << "Cannot open camera\n";
+            LOG(ERROR) << "Cannot open video file.\n";
             return -1;
         }
 	    cv::Size S = cv::Size((int)cap.get(cv::VideoCaptureProperties::CAP_PROP_FRAME_WIDTH), 

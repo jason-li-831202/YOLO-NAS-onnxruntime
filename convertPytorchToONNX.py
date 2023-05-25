@@ -103,7 +103,6 @@ def parse_args():
     parser.add_argument(
         "-m",
         "-i",
-        "-w",
         "--input_model",
         type=str,
         help="model name ",
@@ -118,7 +117,6 @@ def parse_args():
         default=[640, 640],
         help="image size",
     )  # height, width
-    parser.add_argument("-op", "--opset", type=int, default=12, help="opset version")
 
     parser.add_argument(
         "-n",
@@ -132,6 +130,22 @@ def parse_args():
         type=Path,
         help="Directory for saving files, none means using the same path as the input model",
     )
+
+    parser.add_argument(
+        "-w",
+        "--checkpoint_path",
+        type=Path,
+        help="The path with save the trained model parameters",
+    )
+
+    parser.add_argument(
+        "-c",
+        "--class_names",
+        type=Path,
+        help="The path to class names file.",
+    )
+
+    parser.add_argument("-op", "--opset", type=int, default=12, help="opset version")
     parser.add_argument(
         "-s",
         "--spatial_detection",
@@ -143,14 +157,6 @@ def parse_args():
         "--shaves",
         type=int,
         help="Inference with depth information",
-    )
-    parser.add_argument(
-        "-t",
-        "--convert_tool",
-        type=str,
-        help="Which tool is used to convert, docker: should already have docker (https://docs.docker.com/get-docker/) and docker-py (pip install docker) installed; blobconverter: uses an online server to convert the model and should already have blobconverter (pip install blobconverter); local: use openvino-dev (pip install openvino-dev) and openvino 2022.1 ( https://docs.oakchina.cn/en/latest /pages/Advanced/Neural_networks/local_convert_openvino.html#id2) to convert",
-        default="blobconverter",
-        choices=["docker", "blobconverter", "local"],
     )
 
     parse_arg = parser.parse_args()
@@ -170,17 +176,30 @@ def parse_args():
     if parse_arg.shaves is None:
         parse_arg.shaves = 5 if parse_arg.spatial_detection else 6
 
+    if parse_arg.checkpoint_path != None:
+        assert (parse_arg.checkpoint_path.is_file()), "Can't find the model file."
+        assert (parse_arg.checkpoint_path.suffix in {".pth", ".pt"}), "The model file extension is not in the PyTorch format."
+        assert (parse_arg.class_names.is_file()), "Can't find the class names file."
+
+        with open(parse_arg.class_names, 'rt') as f:
+            classes = f.read().rstrip("\n").split("\n")
+        parse_arg.class_names = classes
     return parse_arg
 
 
-def export(input_model, img_size, output_model, opset, **kwargs):
+def export(input_model, img_size, output_model, checkpoint_path, opset, class_names, **kwargs):
     t = time.time()
     from super_gradients.training import models
 
     # Load PyTorch model
-    model = models.get(input_model, pretrained_weights="coco")
+    if checkpoint_path is None:
+        model = models.get(input_model, pretrained_weights="coco")
+        labels = model._class_names  # get class names
+    else :
+        model = models.get(input_model, checkpoint_path=str(checkpoint_path), num_classes=len(class_names))
+        labels = class_names  # get class names
+    
 
-    labels = model._class_names  # get class names
     labels = labels if isinstance(labels, list) else list(labels.values())
 
     # check num classes and labels
