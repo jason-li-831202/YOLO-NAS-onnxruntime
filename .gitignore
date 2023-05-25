@@ -56,3 +56,5 @@ models/yolo_nas_s.onnx
 models/yolo_nas_m.onnx
 demo/video-1.mp4
 demo/video-1_result.mp4
+demo/road.mp4
+demo/road_result.mp4

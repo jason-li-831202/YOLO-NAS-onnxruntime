@@ -78,7 +78,7 @@ cmake --build .
     python3 convertPytorchToONNX.py --input_model yolo_nas_s --output_dir ./models --img-size 640 640 
     ```
   
-    input_model : Type contains { yolo_nas_s/yolo_nas_m/yolo_nas_l }
+    input_model : Type contains { `yolo_nas_s` / `yolo_nas_m` / `yolo_nas_l` }
 
     img-size : Set model input size (h, w)
 
@@ -109,8 +109,9 @@ cmake --build .
   ```
 
 <h1 id="Demo">➤ Demo</h1>
-
-
+  <p>
+      <img src="./demo/demo-gif.gif" width=800px>
+  </p>
 
 <h1 id="References">➤ References</h1>
 
