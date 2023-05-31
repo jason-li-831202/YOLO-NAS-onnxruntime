@@ -1,3 +1,9 @@
+/*================================================*/
+/* Author: jason-li-831202                        */
+/* @File: main.cpp                                */
+/* @Software: Visual Stidio Code                  */
+/*================================================*/
+
 #include <iostream>
 #include <opencv2/opencv.hpp>
 

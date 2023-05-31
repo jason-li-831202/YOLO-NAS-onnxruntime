@@ -1,5 +1,6 @@
 #include "detector.h"
 
+
 YOLODetector::YOLODetector(const std::string& modelPath,
                            const bool& isGPU = true)
 {
@@ -11,6 +12,7 @@ YOLODetector::YOLODetector(const std::string& modelPath,
     OrtCUDAProviderOptions cudaOption;
 
     LOG(INFO) << "=============== Model info ===============";
+    LOG(INFO) << "Onnxruntime Version:" << ORT_API_VERSION;
     if (isGPU && (cudaAvailable == availableProviders.end()))
     {
         LOG(WARN) << "GPU is not supported by your ONNXRuntime build. Fallback to CPU.";
@@ -52,7 +54,13 @@ void YOLODetector::getInputDetails(Ort::AllocatorWithDefaultOptions allocator)
     this->isDynamicInputShape = false;
     for (int layer=0; layer < this->session.GetInputCount(); layer+=1)
     {
-        inputNames.push_back(this->session.GetInputName(layer, allocator));
+        #if ORT_API_VERSION < 13
+            inputNames.push_back(this->session.GetInputName(layer, allocator));
+        #else
+            Ort::AllocatedStringPtr input_name_Ptr = this->session.GetInputNameAllocated(layer, allocator);
+            inputNamesString.push_back(input_name_Ptr.get());
+            inputNames.push_back(inputNamesString[layer].c_str());
+        #endif
         LOG(INFO) << "Name [" << layer << "]: " << inputNames[layer];
 
         std::vector<int64_t> inputTensorShape = this->session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
@@ -68,6 +76,7 @@ void YOLODetector::getInputDetails(Ort::AllocatorWithDefaultOptions allocator)
             LOG(INFO, false, false) << shape << ", ";
         LOG(INFO, false) << ")";
     }
+
 }
 
 void YOLODetector::getOutputDetails(Ort::AllocatorWithDefaultOptions allocator)
@@ -75,7 +84,13 @@ void YOLODetector::getOutputDetails(Ort::AllocatorWithDefaultOptions allocator)
     LOG(INFO) << "--------------- Output info --------------";
     for (int layer=0; layer < this->session.GetOutputCount(); layer+=1)
     {
-        outputNames.push_back(this->session.GetOutputName(layer, allocator));
+        #if ORT_API_VERSION < 13
+            outputNames.push_back(this->session.GetOutputName(layer, allocator));
+        #else
+            Ort::AllocatedStringPtr output_name_Ptr = this->session.GetOutputNameAllocated(layer, allocator);
+            outputNamesString.push_back(output_name_Ptr.get());
+            outputNames.push_back(outputNamesString[layer].c_str());
+        #endif
         LOG(INFO) << "Name [" << layer << "]: " << outputNames[layer];
         
         auto outputTensorShape = this->session.GetOutputTypeInfo(layer).GetTensorTypeAndShapeInfo().GetShape();

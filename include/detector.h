@@ -22,6 +22,10 @@ private:
     bool isDynamicInputShape{};
     std::vector<const char*> inputNames;
     std::vector<const char*> outputNames;
+    #if ORT_API_VERSION >= 13
+        std::vector<std::string> inputNamesString;
+        std::vector<std::string> outputNamesString;
+    #endif
 	std::vector<std::vector<int64_t>> input_node_dims; // >=1 outputs
 	std::vector<std::vector<int64_t>> output_node_dims; // >=1 outputs
     cv::Size2f inputImageShape;

@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding:utf-8 -*-
+
+#================================================
+# Author: jason-li-831202
+# @File: convertPytorchToONNX.py
+# @Software: Visual Stidio Code
+#================================================
+
 import argparse
 import json
 import time

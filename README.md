@@ -81,16 +81,17 @@ cmake --build .
     # your custom model
     python3 convertPytorchToONNX.py --input_model yolo_nas_s --output_dir ./models --img-size 640 640 --checkpoint_path path_to_pth_model --class_names path_to_names_file
     ```
-  
-    `input_model` : Type contains { `yolo_nas_s` / `yolo_nas_m` / `yolo_nas_l` }
-
-    `img-size` : Set model input size (h, w)
-
-    `output_dir` : Directory for saving files, none means using the same path as the input model
     
-    `checkpoint_path` : The path with save the trained pth model
+    Description of all arguments:
+    - `--input_model` : Type contains { `yolo_nas_s` / - - -  `yolo_nas_m` / `yolo_nas_l` }
 
-    `class_names` : The path to class names file
+    - `--img-size` : Set model input size (h, w)
+
+    - `--output_dir` : Directory for saving files, none means using the same path as the input model
+    
+    - `--checkpoint_path` : The path with save the trained pth model
+
+    - `--class_names` : The path to class names file
 
     <br>
     YOLO-NAS ~0.5 mAP by official information:
