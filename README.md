@@ -83,7 +83,7 @@ cmake --build .
     ```
     
     Description of all arguments:
-    - `--input_model` : Type contains { `yolo_nas_s` / - - -  `yolo_nas_m` / `yolo_nas_l` }
+    - `--input_model` : Type contains { `yolo_nas_s` /  `yolo_nas_m` / `yolo_nas_l` }
 
     - `--img-size` : Set model input size (h, w)
 
