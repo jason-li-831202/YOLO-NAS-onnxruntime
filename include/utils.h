@@ -19,8 +19,10 @@ typedef struct RGB {
 
 namespace utils
 {
+    bool isImage(const std::string& path);
     std::vector<cv::Scalar> colorVectorScalar(int num);
     std::string splitExtension(std::string fileNamePath);
+    std::string getFileExtension(const std::string& path);
     size_t vectorProduct(const std::vector<int64_t>& vector);
     std::vector<float> arrayToVector(const float *data, std::vector<int64_t> outputShape);
     
@@ -40,7 +42,6 @@ namespace utils
                    int stride);
 
     void scaleCoords(const cv::Size& imageShape, cv::Rect& box, const cv::Size& imageOriginalShape);
-
     template <typename T>
     T clip(const T& n, const T& lower, const T& upper);
 }
