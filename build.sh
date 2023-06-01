@@ -5,31 +5,43 @@ ONNXRUNTIME_VERSION="1.15.0"
 ONNXRUNTIME_GPU=1
 
 # Platform
-if [ "$(uname)" == "Darwin" ]; then
-    ONNXRUNTIME_PLATFORM="osx"
-    ONNXRUNTIME_GPU=0
-elif [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
-    ONNXRUNTIME_PLATFORM="linux"
-elif [ "$(expr substr $(uname -s) 1 10)" == "MINGW32_NT" ]; then
-    ONNXRUNTIME_PLATFORM="windows"
-elif [ "$(expr substr $(uname -s) 1 10)" == "MINGW64_NT" ]; then
-    ONNXRUNTIME_PLATFORM="windows"
-else 
-    echo "Unsupported platform"
-    exit 1
-fi
+platform="$(uname -s)"
+case "$platform" in
+    Darwin*)
+        ONNXRUNTIME_PLATFORM="osx"
+        ONNXRUNTIME_GPU=0
+        ;;
+    Linux*)
+        ONNXRUNTIME_PLATFORM="linux"
+        ;;
+    MINGW32_NT*|MINGW64_NT*)
+        ONNXRUNTIME_PLATFORM="win"
+        ;;
+    *)
+        echo "Unsupported platform: $platform"
+        exit 1
+        ;;
+esac
 
 # Architecture
-if [ "$(uname -m)" == "x86_64" ]; then
-    ONNXRUNTIME_ARCH="x64"
-elif [ "$(uname -m)" == "armv7l" ]; then
-    ONNXRUNTIME_ARCH="arm"
-elif [ "$(uname -m)" == "aarch64" ] || [ "$(uname -m)" == "arm64" ]; then
-    ONNXRUNTIME_ARCH="arm64"
-else
-    echo "Unsupported $(uname -m) architecture"
-    exit 1
-fi
+architecture="$(uname -m)"
+
+case "$architecture" in
+    x86_64)
+        ONNXRUNTIME_ARCH="x64"
+        ;;
+    armv7l)
+        ONNXRUNTIME_ARCH="arm"
+        ;;
+    aarch64|arm64)
+        ONNXRUNTIME_ARCH="arm64"
+        ;;
+    *)
+        echo "Unsupported architecture: $architecture"
+        exit 1
+        ;;
+esac
+
 
 # GPU
 if [ ${ONNXRUNTIME_GPU} == 1 ]; then
