@@ -20,8 +20,7 @@ int main(int argc, char* argv[])
 
     cmdline::parser cmd;
     cmd.add<std::string>("model_path", 'm', "Path to onnx model.", true, "yolov5.onnx");
-    cmd.add<std::string>("image", 'i', "Image source to be detected.", false, "bus.jpg");
-    cmd.add<std::string>("video", 'v', "Video source to be detected.", false, "video.mp4");
+    cmd.add<std::string>("source", 's', "Source to be detected.", true, "video.mp4");
     cmd.add<std::string>("class_names", 'c', "Path to class names file.", true, "coco.names");
     cmd.add<std::string>("score_thres", '\0', "Confidence threshold for categories.", false, "0.3f");
     cmd.add<std::string>("iou_thres", '\0', "Overlap threshold.", false, "0.4f");
@@ -31,26 +30,19 @@ int main(int argc, char* argv[])
     cmd.parse_check(argc, argv);
 
     bool isGPU = cmd.exist("gpu");
-    bool isVideo = cmd.exist("video");
-    std::string sourcePath = "";
+
+    std::string sourcePath = cmd.get<std::string>("source");
+    bool isImage = utils::isImage(sourcePath);
+
     std::string outputPath = "";
-    if (cmd.exist("video"))
+
+    if (isImage)
     {
-        sourcePath = cmd.get<std::string>("video");
-        outputPath = utils::splitExtension(sourcePath);
-        outputPath.append("_result.mp4");
-    }
-    else if  (cmd.exist("image"))
-    {
-        sourcePath = cmd.get<std::string>("image");
-        outputPath = utils::splitExtension(sourcePath);
-        outputPath.append("_result.jpg");
-        isVideo = false;
+        outputPath = utils::splitExtension(sourcePath) + "_result.jpg";
     }
     else
     {
-        LOG(ERROR) << "Error: Empty Source Type, please check if there are parameters for video or image.";
-        return -1;
+        outputPath = utils::splitExtension(sourcePath) + "_result.mp4";
     }
 
     const std::string modelPath = cmd.get<std::string>("model_path");
@@ -81,11 +73,23 @@ int main(int argc, char* argv[])
     }
     std::vector<cv::Scalar> classColors = utils::colorVectorScalar(detector.num_class);
 
-    if (isVideo)
+    if (!isImage)
     {
-        cv::VideoCapture cap(sourcePath);
+
+        cv::VideoCapture cap;
+
+        // Check if source is webcam
+        if (sourcePath == "0")
+        {
+            cap = cv::VideoCapture(0);
+        }
+        else
+        {
+            cap = cv::VideoCapture(sourcePath);
+        }
+        
         if (!cap.isOpened()) {
-            LOG(ERROR) << "Cannot open video file.\n";
+            LOG(ERROR) << "Cannot open video.\n";
             return -1;
         }
 	    cv::Size S = cv::Size((int)cap.get(cv::VideoCaptureProperties::CAP_PROP_FRAME_WIDTH), 
