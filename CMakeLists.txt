@@ -26,9 +26,9 @@ message(STATUS "ONNXRUNTIME_DIR: ${ONNXRUNTIME_DIR}\n")
 target_include_directories(demo PRIVATE "${ONNXRUNTIME_DIR}/include")
 if (WIN32)
     target_link_libraries(demo "${ONNXRUNTIME_DIR}/lib/onnxruntime.lib")
-endif(WIN32)
-
-if (UNIX)
+elseif (APPLE)    
+    target_link_libraries(demo "${ONNXRUNTIME_DIR}/lib/libonnxruntime.dylib")
+elseif (UNIX)
     target_link_libraries(demo "${ONNXRUNTIME_DIR}/lib/libonnxruntime.so")
 endif(UNIX)
 
@@ -46,6 +46,3 @@ message(STATUS "   Include path: ${OpenCV_INCLUDE_DIRS}\n")
 # Link your application with OpenCV libraries/header
 target_include_directories(demo PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(demo ${OpenCV_LIBS})
-
-
-

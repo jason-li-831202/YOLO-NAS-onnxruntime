@@ -43,8 +43,8 @@ This repo provides the C++ implementation of YOLO-NAS based on ONNXRuntime for p
 
 * **C++ Install :**
   - OpenCV 4.x
-  - ONNXRuntime 1.9+
-  - OS: Tested on Ubuntu 20.04
+  - ONNXRuntime 1.10+
+  - OS: Tested on Ubuntu 20.04 and Apple Silicon (M1)
   - CUDA 11+ [Optional]
 
 <h1 id="Build">➤ Build</h1>
@@ -54,7 +54,7 @@ First, decompress the tgz library of onnxruntime :
 onnxruntime repo: https://github.com/microsoft/onnxruntime/tags
 
 ```bash
-tar zxvf onnxruntime-linux-x64-gpu-1.9.0.tgz
+tar zxvf onnxruntime-linux-x64-gpu-1.10.0.tgz
 ```
 
 Rapidly build the project you can run the following commands:
