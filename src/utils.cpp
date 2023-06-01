@@ -236,3 +236,17 @@ T utils::clip(const T& n, const T& lower, const T& upper)
 {
     return std::max(lower, std::min(n, upper));
 }
+
+std::string utils::getFileExtension(const std::string& path)
+{
+    std::string ext = path.substr(path.find_last_of(".") + 1);
+    return ext;
+}
+
+bool utils::isImage(const std::string& path)
+{
+    static const std::string extensions[] = { "jpg", "jpeg", "png", "bmp", "gif" };
+    std::string extension = path.substr(path.find_last_of(".") + 1);
+    std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+    return std::find(std::begin(extensions), std::end(extensions), extension) != std::end(extensions);
+}

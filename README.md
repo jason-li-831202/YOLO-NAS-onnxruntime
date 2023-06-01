@@ -105,16 +105,23 @@ cmake --build .
       | YOLO-NAS M INT-8 | 51.0  | 3.78         |
       | YOLO-NAS L INT-8 | 52.1  | 4.78         |
 
+
+* ***Run webcam source from CLI*** :
+
+  ```bash
+  ./demo --model_path ../models/yolo_nas_s.onnx --source 0 --class_names ../models/coco.names --gpu
+  ```
+
 * ***Run video source from CLI*** :
 
   ```bash
-  ./demo --model_path ../models/yolo_nas_s.onnx --video ../demo/video.mp4 --class_names ../models/coco.names --gpu
+  ./demo --model_path ../models/yolo_nas_s.onnx --source ../demo/video.mp4 --class_names ../models/coco.names --gpu
   ```
 
 * ***Run image source from CLI*** :
 
   ```bash
-  ./demo --model_path ../models/yolo_nas_s.onnx --image ../demo/traffic.jpg --class_names ../models/coco.names --gpu
+  ./demo --model_path ../models/yolo_nas_s.onnx --source ../demo/traffic.jpg --class_names ../models/coco.names --gpu
   ```
 
 <h1 id="Demo">➤ Demo</h1>
