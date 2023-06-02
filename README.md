@@ -49,7 +49,14 @@ This repo provides the C++ implementation of YOLO-NAS based on ONNXRuntime for p
 
 <h1 id="Build">➤ Build</h1>
 
-First, decompress the tgz library of onnxruntime :
+Rapidly build the project you can run the following commands:
+```bash
+# Your can change ONNXRUNTIME_VERSION="x.x.x" in line 4.
+
+./build.sh
+```
+
+If you want to use your own onnxruntime version, decompress the tgz library of onnxruntime :
 
 onnxruntime repo: https://github.com/microsoft/onnxruntime/tags
 
@@ -57,12 +64,7 @@ onnxruntime repo: https://github.com/microsoft/onnxruntime/tags
 tar zxvf onnxruntime-linux-x64-gpu-1.10.0.tgz
 ```
 
-Rapidly build the project you can run the following commands:
-```bash
-./build.sh
-```
-
-If you want to use your own onnxruntime version, don't forget to change `ONNXRUNTIME_DIR` cmake option:
+Next, don't forget to change `ONNXRUNTIME_DIR` cmake option:
 
 ```bash
 mkdir build && cd build
