@@ -51,7 +51,7 @@ This repo provides the C++ implementation of YOLO-NAS based on ONNXRuntime for p
 
 Rapidly build the project you can run the following commands:
 ```bash
-# Your can change ONNXRUNTIME_VERSION="x.x.x" in line 4.
+# You can change ONNXRUNTIME_VERSION="x.x.x" in line 4.
 
 ./build.sh
 ```
