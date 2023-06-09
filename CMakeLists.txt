@@ -77,7 +77,7 @@ elseif (APPLE)
     target_link_libraries(demo "${ONNXRUNTIME_DIR}/lib/libonnxruntime.dylib")
 elseif (UNIX)
     target_link_libraries(demo "${ONNXRUNTIME_DIR}/lib/libonnxruntime.so")
-endif(UNIX)
+endif()
 
 message(STATUS "========================================")
 message(STATUS "                OpenCV                  ")
