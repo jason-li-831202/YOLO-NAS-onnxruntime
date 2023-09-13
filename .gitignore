@@ -58,3 +58,5 @@ onnxruntime-linux-x64-gpu-1.10.0/include/onnxruntime_session_options_config_keys
 onnxruntime-linux-x64-gpu-1.10.0/include/provider_options.h
 onnxruntime-linux-x64-gpu-1.10.0/include/tensorrt_provider_factory.h
 onnxruntime-linux-x64-gpu-1.10.0/lib/libonnxruntime.so.1.10.0
+models/yolo_nas_l_face.onnx
+models/yolo_nas_l_parking_space.onnx

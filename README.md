@@ -27,7 +27,9 @@ This repo provides the C++ implementation of YOLO-NAS based on ONNXRuntime for p
 6) [License](#License)
 
 <p>
-    <img src="./demo/traffic_result.jpg" width=600px>
+    <img src="./demo/traffic_result.jpg" height=170px width=250px>
+    <img src="./demo/face_result.jpg" width=250px>
+    <img src="./demo/parking_result.jpg" height=170px width=250px>
 </p>
 
 

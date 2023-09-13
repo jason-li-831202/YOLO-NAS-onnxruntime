@@ -205,26 +205,21 @@ def export(input_model, img_size, output_model, checkpoint_path, opset, class_na
     else :
         model = models.get(input_model, checkpoint_path=str(checkpoint_path), num_classes=len(class_names))
         labels = class_names  # get class names
-    
-
+    # model.predict("./models/demo.png", conf=0.5).show()
     labels = labels if isinstance(labels, list) else list(labels.values())
 
     # check num classes and labels
     assert model.num_classes == len(labels), f"Model class count {model.num_classes} != len(names) {len(labels)}"
 
     # Replace with the custom Detection Head
-
     model.heads = DetectNAS(model.heads, img_size)
 
     num_branches = model.heads.num_heads
 
     # Input
     img = torch.zeros(1, 3, *img_size)
-
     model.eval()
     model.prep_model_for_conversion(input_size=[1, 3, *img_size])
-
-    y = model(img)  # dry runs
 
     # ONNX export
     try:

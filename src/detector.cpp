@@ -133,8 +133,10 @@ void YOLODetector::preprocessing(cv::Mat &image, float*& blob, std::vector<int64
 
     LOG(DEBUG) << "ori image shape (h, w):  "<< image.rows << " " << image.cols;
     LOG(DEBUG) << "resize image shape (h, w):  "<< resizedImage.rows << " " << resizedImage.cols;
-
-    resizedImage.convertTo(floatImage, CV_32FC3, 1 / 255.0);
+    if (this->num_class == 80) 
+        resizedImage.convertTo(floatImage, CV_32FC3, 1 / 255.0);
+    else 
+        resizedImage.convertTo(floatImage, CV_32FC3, 1);
     blob = new float[floatImage.cols * floatImage.rows * floatImage.channels()];
     cv::Size floatImageSize {floatImage.cols, floatImage.rows};
 
