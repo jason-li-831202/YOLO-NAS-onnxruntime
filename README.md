@@ -27,9 +27,9 @@ This repo provides the C++ implementation of YOLO-NAS based on ONNXRuntime for p
 6) [License](#License)
 
 <p>
-    <img src="./demo/traffic_result.jpg" height=170px width=250px>
-    <img src="./demo/face_result.jpg" width=250px>
-    <img src="./demo/parking_result.jpg" height=170px width=250px>
+    <img src="./demo/demo_traffic.jpg" height=170px width=250px>
+    <img src="./demo/demo_face.jpg" width=250px>
+    <img src="./demo/demo_parking.jpg" height=170px width=250px>
 </p>
 
 
@@ -83,7 +83,7 @@ cmake --build .
     python3 convertPytorchToONNX.py --input_model yolo_nas_s --output_dir ./models --img-size 640 640 
 
     # your custom model
-    python3 convertPytorchToONNX.py --input_model yolo_nas_s --output_dir ./models --img-size 640 640 --checkpoint_path path_to_pth_model --class_names path_to_names_file
+    python3 convertPytorchToONNX.py --input_model yolo_nas_s --output_dir ./models --img-size 640 640 --checkpoint_path <path-to-pth-model> --class_names <path-to-names-file>
     ```
     
     Description of all arguments:

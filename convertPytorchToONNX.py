@@ -60,10 +60,9 @@ class DetectNAS(nn.Module):
 
             shift_y, shift_x = torch.meshgrid(shift_y, shift_x)
             anchor_point = torch.stack([shift_x, shift_y], dim=-1).to(dtype=dtype)
+
             anchor_points.append(anchor_point.reshape([-1, 2]))
             stride_tensor.append(torch.full([num_grid_h * num_grid_w, 1], stride, dtype=dtype))
-        anchor_points = torch.cat(anchor_points)
-        stride_tensor = torch.cat(stride_tensor)
         return anchor_points, stride_tensor
 
     def _batch_distance2bbox(self, points, distance) :
@@ -71,7 +70,9 @@ class DetectNAS(nn.Module):
         # while tensor add parameters, parameters should be better placed on the second place
         x1y1 = -lt + points
         x2y2 = rb + points
-        return torch.cat([x1y1, x2y2], dim=-1)
+        wh = x2y2 - x1y1
+        cxcy = x1y1 + wh/2
+        return torch.cat([cxcy, wh], dim=-1)
 
     def forward(self, feats):
         output = []
@@ -81,24 +82,21 @@ class DetectNAS(nn.Module):
             reg_distri, cls_logit = getattr(self, f"head{i + 1}")(feat)
 
             reg_dist_reduced = torch.permute(reg_distri.reshape([-1, 4, self.reg_max + 1, height_mul_width]), [0, 2, 3, 1])
-            reg_dist_reduced = nn.functional.conv2d(nn.functional.softmax(reg_dist_reduced, dim=1), weight=self.proj_conv).squeeze(1)
+            reg_dist_reduced = nn.functional.conv2d(nn.functional.softmax(reg_dist_reduced, dim=1), weight=self.proj_conv).squeeze(1)  # (b, ny*nx, x1y1x2y2)
+            reg_dist_reduced = self._batch_distance2bbox(self.anchor_points[i], reg_dist_reduced) * self.stride_tensor[i] # (b, ny*nx, cxcywh)
 
             # cls and reg
-            pred_scores = cls_logit.sigmoid()
-            pred_conf, _ = pred_scores.max(1, keepdim=True)
-            pred_bboxes = torch.permute(reg_dist_reduced, [0, 2, 1]).reshape([-1, 4, h, w])
-            
+            pred_scores = cls_logit.sigmoid() # (b, class_num, ny, nx)
+            pred_conf, _ = pred_scores.max(1, keepdim=True) # (b, 1, ny, nx)
+            pred_bboxes = torch.permute(reg_dist_reduced, [0, 2, 1]).reshape([-1, 4, h, w]) #(b, cxcywh, ny*nx) -> (b, cxcywh, ny, nx)
+
             pred_output = torch.cat([ pred_bboxes , pred_conf, pred_scores], dim=1)
             bs, na, ny, nx = pred_output.shape
             
-            pred_output = pred_output.view(bs, 1, na, -1).permute(0, 1, 3, 2).contiguous()  # (b, na,20x20,85) for NCNN
-            pred_output = pred_output.view(bs, -1, na)
-
+            pred_output = pred_output.view(bs, na, -1).permute(0, 2, 1).contiguous()  # (b, ny*nx, na=class_num+5) for NCNN
             output.append(pred_output)
 
         cat_output = torch.cat(output, dim=1) 
-        cat_output[:, :, :4] = self._batch_distance2bbox(self.anchor_points, cat_output[:, :, :4]) * self.stride_tensor
-
         return cat_output
 
 

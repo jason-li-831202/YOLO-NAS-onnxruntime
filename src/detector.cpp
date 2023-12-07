@@ -175,12 +175,10 @@ std::vector<Detection> YOLODetector::postprocessing(const cv::Size& resizedImage
             float clsConf = it[4];
             if (clsConf > confThreshold)
             {
-                int left = (int) (it[0]);
-                int top = (int) (it[1]);
-                int right = (int) (it[2]);
-                int bottom = (int) (it[3]);
-                int width = (int) right - left;
-                int height = (int)  bottom - top;
+                int width = (int) (it[2]);
+                int height = (int) (it[3]);
+                int left = (int) (it[0] - width/2);
+                int top = (int) (it[1]- height/2);
 
                 float objConf;
                 int classId;
