@@ -29,13 +29,15 @@ int main(int argc, char* argv[])
 
     cmd.parse_check(argc, argv);
 
-    bool isGPU = cmd.exist("gpu");
+    const bool isGPU = cmd.exist("gpu");
+    const std::string sourcePath = cmd.get<std::string>("source");
+    const std::string modelPath = cmd.get<std::string>("model_path");
+    const std::string classNamesPath = cmd.get<std::string>("class_names");
+    const float confThreshold = std::stof(cmd.get<std::string>("score_thres"));
+    const float iouThreshold = std::stof(cmd.get<std::string>("iou_thres"));
 
-    std::string sourcePath = cmd.get<std::string>("source");
     bool isImage = utils::isImage(sourcePath);
-
     std::string outputPath = "";
-
     if (isImage)
     {
         outputPath = utils::splitExtension(sourcePath) + "_result.jpg";
@@ -44,11 +46,6 @@ int main(int argc, char* argv[])
     {
         outputPath = utils::splitExtension(sourcePath) + "_result.mp4";
     }
-
-    const std::string modelPath = cmd.get<std::string>("model_path");
-    const std::string classNamesPath = cmd.get<std::string>("class_names");
-    const float confThreshold = std::stof(cmd.get<std::string>("score_thres"));
-    const float iouThreshold = std::stof(cmd.get<std::string>("iou_thres"));
 
     const std::vector<std::string> classNames = utils::loadNames(classNamesPath);
     if (classNames.empty())
@@ -98,6 +95,7 @@ int main(int argc, char* argv[])
         LOG(INFO) << "Current FPS : " << fps;
         cv::VideoWriter writer(outputPath, cv::VideoWriter::fourcc('a', 'v', 'c', '1'), fps, S, true);
 
+        // TODO : add fps label
         while (true) {
             bool ret = cap.read(image); 
             if (!ret) {
@@ -110,7 +108,7 @@ int main(int argc, char* argv[])
 
             cv::imshow("result", image);
             writer.write(image);
-            if (cv::waitKey(33) == 'q') {
+            if (cv::waitKey(1) == 'q') {
                 break;
             }
         }

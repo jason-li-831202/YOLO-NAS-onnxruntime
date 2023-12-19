@@ -97,6 +97,8 @@ cmake --build .
 
     - `--class_names` : The path to class names file
 
+    - `--half` : Convert fp32 to fp16 model.
+
     <br>
     YOLO-NAS ~0.5 mAP by official information:
 

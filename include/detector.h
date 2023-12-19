@@ -5,6 +5,8 @@
 
 #include "utils.h"
 
+static uint16_t float32_to_float16(float& input_fp32);
+static float float16_to_float32(uint16_t& input_fp16);
 
 class YOLODetector
 {
@@ -14,11 +16,13 @@ public:
     std::vector<Detection> detectFrame(cv::Mat &image, const float& confThreshold, const float& iouThreshold);
 	int num_class;
 	int num_proposal;
-    
+
 private:
     Ort::Env env{nullptr};
     Ort::SessionOptions sessionOptions{nullptr};
     Ort::Session session{nullptr};
+    ONNXTensorElementDataType inputType;
+    ONNXTensorElementDataType outputType;
     bool isDynamicInputShape{};
     std::vector<const char*> inputNames;
     std::vector<const char*> outputNames;
@@ -39,6 +43,6 @@ private:
                                           const float& confThreshold, const float& iouThreshold);
 
     static void getBestClassInfo(std::vector<float>::iterator it, const int& numClasses,
-                                 float& bestConf, int& bestClassId);
+                                 float& bestConf, int& bestClassId); 
 
 };

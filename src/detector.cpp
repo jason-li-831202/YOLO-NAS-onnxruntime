@@ -1,5 +1,25 @@
 #include "detector.h"
 
+static uint16_t float32_to_float16(float& input_fp32){
+    float f = input_fp32;
+    uint32_t bits = *((uint32_t*) &f);
+    uint16_t sign = (bits >> 31) & 0x1;
+    uint16_t exponent = ((bits >> 23) & 0xff) - 127 + 15;
+    uint16_t mantissa = (bits & 0x7fffff) >> 13;
+    uint16_t f16 = (sign << 15) | (exponent << 10) | mantissa;
+    return f16;
+}
+
+static float float16_to_float32(uint16_t& input_fp16) {
+    // Extracting sign, exponent, and mantissa from the 16-bit representation
+    uint16_t sign = (input_fp16 >> 15) & 0x1;
+    uint16_t exponent = (input_fp16 >> 10) & 0x1f;
+    uint16_t mantissa = input_fp16 & 0x3ff;
+    uint32_t bits = ((sign << 31) | ((exponent + 127 - 15) << 23) | (mantissa << 13));
+    float output_fp32 = *((float*) &bits);
+
+    return output_fp32;
+}
 
 YOLODetector::YOLODetector(const std::string& modelPath,
                            const bool& isGPU = true)
@@ -50,6 +70,7 @@ YOLODetector::YOLODetector(const std::string& modelPath,
 
 void YOLODetector::getInputDetails(Ort::AllocatorWithDefaultOptions allocator)
 {
+    inputType = this->session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetElementType();
     LOG(INFO) << "---------------- Input info --------------";
     this->isDynamicInputShape = false;
     for (int layer=0; layer < this->session.GetInputCount(); layer+=1)
@@ -63,13 +84,15 @@ void YOLODetector::getInputDetails(Ort::AllocatorWithDefaultOptions allocator)
         #endif
         LOG(INFO) << "Name [" << layer << "]: " << inputNames[layer];
 
-        std::vector<int64_t> inputTensorShape = this->session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
+        std::vector<int64_t> inputTensorShape = this->session.GetInputTypeInfo(layer).GetTensorTypeAndShapeInfo().GetShape();
+
         // checking if width and height are dynamic
         if (inputTensorShape[2] == -1 && inputTensorShape[3] == -1)
         {
             LOG(INFO) << "Dynamic input shape.";
             this->isDynamicInputShape = true;
         }
+        
         input_node_dims.push_back(inputTensorShape);
         LOG(INFO, true, false) << "Shape [" << layer << "]: (" << "";
         for (const int64_t& shape : inputTensorShape)
@@ -81,6 +104,7 @@ void YOLODetector::getInputDetails(Ort::AllocatorWithDefaultOptions allocator)
 
 void YOLODetector::getOutputDetails(Ort::AllocatorWithDefaultOptions allocator)
 {
+    outputType = this->session.GetOutputTypeInfo(0).GetTensorTypeAndShapeInfo().GetElementType();
     LOG(INFO) << "--------------- Output info --------------";
     for (int layer=0; layer < this->session.GetOutputCount(); layer+=1)
     {
@@ -161,16 +185,29 @@ std::vector<Detection> YOLODetector::postprocessing(const cv::Size& resizedImage
     for (int layer=0; layer < output_node_dims.size(); layer+=1)
     {
         std::vector<int64_t> outputShape = output_node_dims[layer];
-        const float * rawOutput = outputTensors[layer].GetTensorData<float>();
-        size_t count = outputTensors[layer].GetTensorTypeAndShapeInfo().GetElementCount();
-
-        std::vector<float> output(rawOutput, rawOutput + count);
         int elementsInBatch = (int)(output_node_dims[layer][1] * output_node_dims[layer][2]); 
-        LOG(DEBUG) << "output size :" << output.size();
-        LOG(DEBUG) << "elementsInBatch :" << elementsInBatch;
+        size_t count = outputTensors[layer].GetTensorTypeAndShapeInfo().GetElementCount();
+        std::vector<float> outputValues;
 
+        if (outputType == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16){
+            const Ort::Float16_t * rawOutput = outputTensors[layer].GetTensorData<Ort::Float16_t>();
+            std::vector<uint16_t> outputTensorValuesFp16(rawOutput, rawOutput + count);
+            for (auto fp16 : outputTensorValuesFp16)
+            {
+                outputValues.push_back(float16_to_float32(fp16));
+            }
+        }else{
+            const float * rawOutput = outputTensors[layer].GetTensorData<float>();
+            std::vector<float> outputTensorValuesFp32(rawOutput, rawOutput + count);
+            for (auto fp32 : outputTensorValuesFp32)
+            {
+                outputValues.push_back(fp32);
+            }
+        }
+
+        LOG(DEBUG) << "elementsInBatch :" << elementsInBatch;
         // only for batch size = 1
-        for (auto it = output.begin(); it != output.begin() + elementsInBatch; it += output_node_dims[layer][2])
+        for (auto it = outputValues.begin(); it != outputValues.begin() + elementsInBatch; it += output_node_dims[layer][2])
         {
             float clsConf = it[4];
             if (clsConf > confThreshold)
@@ -179,7 +216,7 @@ std::vector<Detection> YOLODetector::postprocessing(const cv::Size& resizedImage
                 int height = (int) (it[3]);
                 int left = (int) (it[0] - width/2);
                 int top = (int) (it[1]- height/2);
-
+                
                 float objConf;
                 int classId;
                 this->getBestClassInfo(it, this->num_class, objConf, classId);
@@ -217,21 +254,30 @@ std::vector<Detection> YOLODetector::detectFrame(cv::Mat &image, const float& co
 {
     float *blob = nullptr;
     std::vector<int64_t> inputTensorShape {1, 3, -1, -1};
-    this->preprocessing(image, blob, inputTensorShape);
+    this->preprocessing(image,  blob, inputTensorShape);
 
     size_t inputTensorSize = utils::vectorProduct(inputTensorShape);
 
     std::vector<float> inputTensorValues(blob, blob + inputTensorSize);
-
-    std::vector<Ort::Value> inputTensors;
-
     Ort::MemoryInfo memoryInfo = Ort::MemoryInfo::CreateCpu(
             OrtAllocatorType::OrtArenaAllocator, OrtMemType::OrtMemTypeDefault);
 
-    inputTensors.push_back(Ort::Value::CreateTensor<float>(
-            memoryInfo, inputTensorValues.data(), inputTensorSize,
-            inputTensorShape.data(), inputTensorShape.size()
-    ));
+    std::vector<Ort::Value> inputTensors;
+    std::vector<Ort::Float16_t> inputTensorValuesFp16;
+    if (inputType == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16){
+        for (float fp32 : inputTensorValues)
+        {
+            inputTensorValuesFp16.push_back(float32_to_float16(fp32));
+        }
+    
+        inputTensors.push_back(Ort::Value::CreateTensor(
+                memoryInfo, inputTensorValuesFp16.data(), inputTensorSize,
+                inputTensorShape.data(), inputTensorShape.size()));
+    }else{
+        inputTensors.push_back(Ort::Value::CreateTensor(
+                memoryInfo, inputTensorValues.data(), inputTensorSize,
+                inputTensorShape.data(), inputTensorShape.size()));
+    }
 
     std::vector<Ort::Value> outputTensors = this->session.Run(Ort::RunOptions{nullptr},
                                                               inputNames.data(),

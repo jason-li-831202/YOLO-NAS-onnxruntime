@@ -11,12 +11,14 @@ import argparse
 import json
 import time
 import warnings
-from io import BytesIO
-from pathlib import Path
-import numpy as np
 
 import torch
 import torch.nn as nn
+
+from io import BytesIO
+from pathlib import Path
+from onnxconverter_common import float16
+from torchsummary import summary
 
 warnings.filterwarnings("ignore")
 
@@ -99,6 +101,41 @@ class DetectNAS(nn.Module):
         cat_output = torch.cat(output, dim=1) 
         return cat_output
 
+def colorstr(*input):
+    # Colors a string https://en.wikipedia.org/wiki/ANSI_escape_code, i.e.  colorstr('blue', 'hello world')
+    *args, string = input if len(input) > 1 else ('blue', 'bold', input[0])  # color arguments, string
+    colors = {
+        'black': '\033[30m',  # basic colors
+        'red': '\033[31m',
+        'green': '\033[32m',
+        'yellow': '\033[33m',
+        'blue': '\033[34m',
+        'magenta': '\033[35m',
+        'cyan': '\033[36m',
+        'white': '\033[37m',
+        'bright_black': '\033[90m',  # bright colors
+        'bright_red': '\033[91m',
+        'bright_green': '\033[92m',
+        'bright_yellow': '\033[93m',
+        'bright_blue': '\033[94m',
+        'bright_magenta': '\033[95m',
+        'bright_cyan': '\033[96m',
+        'bright_white': '\033[97m',
+        'end': '\033[0m',  # misc
+        'bold': '\033[1m',
+        'underline': '\033[4m'}
+    return ''.join(colors[x] for x in args) + f'{string}' + colors['end']
+
+def file_size(path: str):
+    # Return file/dir size (MB)
+    mb = 1 << 20  # bytes to MiB (1024 ** 2)
+    path = Path(path)
+    if path.is_file():
+        return path.stat().st_size / mb
+    elif path.is_dir():
+        return sum(f.stat().st_size for f in path.glob('**/*') if f.is_file()) / mb
+    else:
+        return 0.0
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -124,12 +161,6 @@ def parse_args():
     )  # height, width
 
     parser.add_argument(
-        "-n",
-        "--name",
-        type=str,
-        help="The name of the model to be saved, none means using the same name as the input model",
-    )
-    parser.add_argument(
         "-o",
         "--output_dir",
         type=Path,
@@ -149,7 +180,7 @@ def parse_args():
         type=Path,
         help="The path to class names file.",
     )
-
+    parser.add_argument("--half", action="store_true", help="conver to fp16")
     parser.add_argument("-op", "--opset", type=int, default=12, help="opset version")
     parser.add_argument(
         "-s",
@@ -165,10 +196,7 @@ def parse_args():
     )
 
     parse_arg = parser.parse_args()
-
-    if parse_arg.name is None:
-        parse_arg.name = parse_arg.input_model
-
+    
     if parse_arg.output_dir is None:
         parse_arg.output_dir = ROOT.joinpath(parse_arg.input_model)
 
@@ -191,12 +219,12 @@ def parse_args():
         parse_arg.class_names = classes
     return parse_arg
 
-
-def export(input_model, img_size, output_model, checkpoint_path, opset, class_names, **kwargs):
+def export(input_model, img_size, output_model, checkpoint_path, opset, class_names, half, **kwargs):
     t = time.time()
     from super_gradients.training import models
 
     # Load PyTorch model
+    print(colorstr("Loading pytorch path [%s] with torch %s..." %(input_model, torch.__version__) ))
     if checkpoint_path is None:
         model = models.get(input_model, pretrained_weights="coco")
         labels = model._class_names  # get class names
@@ -204,6 +232,7 @@ def export(input_model, img_size, output_model, checkpoint_path, opset, class_na
         model = models.get(input_model, checkpoint_path=str(checkpoint_path), num_classes=len(class_names))
         labels = class_names  # get class names
     # model.predict("./models/demo.png", conf=0.5).show()
+
     labels = labels if isinstance(labels, list) else list(labels.values())
 
     # check num classes and labels
@@ -223,8 +252,7 @@ def export(input_model, img_size, output_model, checkpoint_path, opset, class_na
     try:
         import onnx
 
-        print()
-        print("Starting ONNX export with onnx %s..." % onnx.__version__)
+        print(colorstr("Starting export with onnx %s..." % onnx.__version__))
         with BytesIO() as f:
             torch.onnx.export(
                 model,
@@ -237,16 +265,15 @@ def export(input_model, img_size, output_model, checkpoint_path, opset, class_na
             )
 
             # Checks
-            onnx_model = onnx.load_from_string(f.getvalue())  # load onnx model
-            onnx.checker.check_model(onnx_model)  # check onnx model
+            onnx_model_fp32 = onnx.load_from_string(f.getvalue())  # load onnx model
+            onnx.checker.check_model(onnx_model_fp32)  # check onnx model
 
         try:
             import onnxsim
 
-            print("Starting to simplify ONNX...")
-            onnx_model, check = onnxsim.simplify(onnx_model)
+            print(colorstr("Starting to simplify onnx with %s..." % onnxsim.__version__))
+            onnx_model_fp32, check = onnxsim.simplify(onnx_model_fp32)
             assert check, "assert check failed"
-
         except ImportError:
             print(
                 "onnxsim is not found, if you want to simplify the onnx, "
@@ -255,14 +282,32 @@ def export(input_model, img_size, output_model, checkpoint_path, opset, class_na
                 + "then use:\n\t"
                 + f'python -m onnxsim "{output_model}" "{output_model}"'
             )
-        except Exception:
-            print("Simplifier failure")
+        except Exception as e:
+            print(colorstr('red', f'Eexport failure ❌ : {e}'))
+            exit()
 
-        onnx.save(onnx_model, output_model)
-        print("ONNX export success, saved as:\n\t%s" % output_model)
+        # Convert to float16
+        if half:
+            try:
+                import onnxconverter_common
+                print(colorstr(f'Starting to convert float16 with onnxconverter_common {onnxconverter_common.__version__}...'))
+                onnx_model_fp16 = float16.convert_float_to_float16(onnx_model_fp32, op_block_list=["Softmax", "ReduceMax", "ConvTranspose"])
+            except ImportError:
+                print(
+                    "onnxconverter_common is not found, if you want to quant the onnx, "
+                    + "you should install it:\n\t"
+                    + "pip install -U onnxconverter_common\n"
+                )
+            except Exception as e:
+                print(colorstr('red', f'Eexport failure ❌ : {e}'))
+                exit()
+        
+        onnx.save(onnx_model_fp16 if half else onnx_model_fp32, output_model)
+        print(colorstr('bright_magenta', "ONNX export success ✅ , saved as:\n\t%s" % output_model))
 
-    except Exception:
-        print("ONNX export failure")
+    except Exception as e:
+        print(colorstr('red', f'Eexport failure ❌ : {e}'))
+        exit()
 
     # generate anchors and sides
     anchors = []
@@ -270,8 +315,9 @@ def export(input_model, img_size, output_model, checkpoint_path, opset, class_na
     # generate masks
     masks = dict()
 
-    print("anchors:\n\t%s" % anchors)
-    print("anchor_masks:\n\t%s" % masks)
+    print(colorstr('bright_magenta', "anchors:\n\t%s" % anchors))
+    print(colorstr('bright_magenta', "anchor_masks:\n\t%s" % masks))
+    print(colorstr('bright_magenta', "num_classes:\n\t%s" % model.num_classes))
     export_json = output_model.with_suffix(".json")
     export_json.write_text(
         json.dumps(
@@ -294,17 +340,17 @@ def export(input_model, img_size, output_model, checkpoint_path, opset, class_na
             indent=4,
         )
     )
-    print("Anchors data export success, saved as:\n\t%s" % export_json)
+    print(colorstr('bright_magenta', "Anchors data export success, saved as:\n\t%s" % export_json))
 
     # Finish
-    print("Export complete (%.2fs).\n" % (time.time() - t))
+    print(colorstr('bright_magenta', "Export complete (%.2fs).\n" % (time.time() - t)))
 
 
 if __name__ == "__main__":
     args = parse_args()
-    print(args)
-    output_model = args.output_dir / (args.name + ".onnx")
+    print(colorstr(args))
 
+    output_model = Path.joinpath(args.output_dir, args.input_model + ("_fp16" if args.half else "_fp32") + ".onnx")
     export(output_model=output_model, **vars(args))
 
 
