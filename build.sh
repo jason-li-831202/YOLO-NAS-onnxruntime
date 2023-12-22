@@ -1,7 +1,7 @@
 #!/bin/bash
 CURRENT_DIR=$(cd "$(dirname "$0")"; pwd)
 
-ONNXRUNTIME_VERSION="1.10.0"
+ONNXRUNTIME_VERSION="1.15.0"
 ONNXRUNTIME_GPU=1
 
 # Platform

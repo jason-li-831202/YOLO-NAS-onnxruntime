@@ -1,4 +1,4 @@
-# YOLO-NAS-OnnxRuntime
+# YOLO-NAS-OnnxRuntime (FP32/FP16/INT8)
 
 <p>
     <a href="#"><img alt="C++" src="https://img.shields.io/badge/C++-49D.svg?logo=C&logoColor=white"></a>
@@ -92,12 +92,18 @@ cmake --build .
     - `--img-size` : Set model input size (h, w)
 
     - `--output_dir` : Directory for saving files, none means using the same path as the input model
-    
+
+    - `--half` : Convert fp32 to fp16 model.
+
+      [ Custom Model Args ]
     - `--checkpoint_path` : The path with save the trained pth model
 
     - `--class_names` : The path to class names file
 
-    - `--half` : Convert fp32 to fp16 model.
+      [ PTQ  Args ]
+    - `--int8` : Conver to int8.
+
+    - `--calib_image_dir` : if None will use dynamic quantization.
 
     <br>
     YOLO-NAS ~0.5 mAP by official information:

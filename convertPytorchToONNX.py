@@ -11,14 +11,18 @@ import argparse
 import json
 import time
 import warnings
+import re, os
 
 import torch
 import torch.nn as nn
+import cv2 as cv2
+import numpy as np
+import onnxruntime as ort
 
 from io import BytesIO
 from pathlib import Path
 from onnxconverter_common import float16
-from torchsummary import summary
+from onnxruntime.quantization import quantize_dynamic, quantize_static, CalibrationDataReader, QuantFormat, QuantType
 
 warnings.filterwarnings("ignore")
 
@@ -31,6 +35,63 @@ yolo_nas = [
     "yolo_nas_m",
     "yolo_nas_l",
 ]
+
+
+class DataReader(CalibrationDataReader):
+    def __init__(self, calibration_image_folder, augmented_model_path=None):
+        self.image_folder = calibration_image_folder
+        self.augmented_model_path = augmented_model_path
+        self.preprocess_flag = True
+        self.enum_data_dicts = []
+        self.datasize = 0
+        self.providers = []
+        if  ort.get_device() == 'GPU' and 'CUDAExecutionProvider' in  ort.get_available_providers():  # gpu 
+            self.providers.append('CUDAExecutionProvider')
+        self.providers.append('CPUExecutionProvider')
+
+    def get_next(self):
+        if self.preprocess_flag:
+            self.preprocess_flag = False
+            session = ort.InferenceSession(self.augmented_model_path, providers=self.providers)
+            self.input_shapes = session.get_inputs()[0].shape
+            nhwc_data_list = self.proprocess_func(self.image_folder, self.input_shapes)
+            input_name = session.get_inputs()[0].name
+            self.datasize = len(nhwc_data_list)
+            self.enum_data_dicts = iter([{input_name: nhwc_data} for nhwc_data in nhwc_data_list])
+        return next(self.enum_data_dicts, None)
+    
+    @staticmethod
+    def resize_image_format(srcimg , frame_resize):
+        padh, padw, newh, neww = 0, 0, frame_resize[0], frame_resize[1]
+        if srcimg.shape[0] != srcimg.shape[1]:
+            hw_scale = srcimg.shape[0] / srcimg.shape[1]
+            if hw_scale > 1:
+                newh, neww = frame_resize[0], int(frame_resize[1] / hw_scale)
+                img = cv2.resize(srcimg, (neww, newh), interpolation=cv2.INTER_CUBIC)
+                padw = int((frame_resize[1] - neww) * 0.5)
+                img = cv2.copyMakeBorder(img, 0, 0, padw, frame_resize[1] - neww - padw, cv2.BORDER_CONSTANT,
+                                        value=0)  # add border
+            else:
+                newh, neww = int(frame_resize[0] * hw_scale) + 1, frame_resize[1]
+                img = cv2.resize(srcimg, (neww, newh), interpolation=cv2.INTER_CUBIC)
+                padh = int((frame_resize[0] - newh) * 0.5)
+                img = cv2.copyMakeBorder(img, padh, frame_resize[0] - newh - padh, 0, 0, cv2.BORDER_CONSTANT, value=0)
+        else:
+            img = cv2.resize(srcimg, (frame_resize[1], frame_resize[0]), interpolation=cv2.INTER_CUBIC)
+        ratioh, ratiow = srcimg.shape[0] / newh, srcimg.shape[1] / neww
+        return img, newh, neww, ratioh, ratiow, padh, padw
+
+    def proprocess_func(self, images_folder, input_shapes):
+        batch_filenames = [ str(name) for name in Path(images_folder).iterdir()]
+        unconcatenated_batch_data = []
+        for image_filepath in batch_filenames:
+            img = cv2.imread(image_filepath, cv2.IMREAD_COLOR)
+            image, newh, neww, ratioh, ratiow, padh, padw = self.resize_image_format(img, input_shapes[-2:])
+            input_data = np.array(image, dtype=np.float32)[np.newaxis, :, :]/255.0
+            unconcatenated_batch_data.append(input_data.transpose(0,3,1,2))
+        batch_data = np.concatenate(np.expand_dims(unconcatenated_batch_data, axis=0), axis=0)
+        print(colorstr('bright_black', "Loading calibration sample count = %s"% str(batch_data.shape)))
+        return batch_data
 
 class DetectNAS(nn.Module):
     """YOLO-NAS Detect head for detection models"""
@@ -95,11 +156,48 @@ class DetectNAS(nn.Module):
             pred_output = torch.cat([ pred_bboxes , pred_conf, pred_scores], dim=1)
             bs, na, ny, nx = pred_output.shape
             
-            pred_output = pred_output.view(bs, na, -1).permute(0, 2, 1).contiguous()  # (b, ny*nx, na=class_num+5) for NCNN
+            pred_output = pred_output.view(bs, na, -1) # (b, na, ny*nx)
             output.append(pred_output)
 
-        cat_output = torch.cat(output, dim=1) 
+        cat_output = torch.cat(output, dim=2).permute(0, 2, 1).contiguous(), # (b, ny*nx, na=class_num+5) for NCNN
         return cat_output
+
+def benchmark(model_path, runs=10):
+    def file_size(path: str):
+        # Return file/dir size (MB)
+        mb = 1 << 20  # bytes to MiB (1024 ** 2)
+        path = Path(path)
+        if path.is_file():
+            return path.stat().st_size / mb
+        elif path.is_dir():
+            return sum(f.stat().st_size for f in path.glob('**/*') if f.is_file()) / mb
+        else:
+            return 0.0
+    providers = []
+    if  ort.get_device() == 'GPU' and 'CUDAExecutionProvider' in  ort.get_available_providers():  # gpu 
+        providers.append('CUDAExecutionProvider')
+    providers.append('CPUExecutionProvider')
+
+    print(colorstr('bright_cyan', f"Model Name [{model_path:s}] "))
+    print(colorstr('bright_cyan', f"Model Size {file_size(model_path):.1f} MB"))
+    for provider in providers :
+        session = ort.InferenceSession(model_path, providers=[provider])
+        input_name = session.get_inputs()[0].name
+        input_shapes = session.get_inputs()[0].shape
+        input_types = np.float16 if 'float16' in session.get_inputs()[0].type else np.float32
+
+        total = 0.0
+        input_data = np.zeros(input_shapes, input_types)  # 随便输入一个假数据
+        # warming up
+        _ = session.run([], {input_name: input_data})
+        for i in range(runs+1):
+            start = time.perf_counter()
+            _ = session.run([], {input_name: input_data})
+            end = (time.perf_counter() - start) * 1000
+            if (i>0) :
+                total += end
+        total /= runs
+        print(colorstr('bright_cyan', f"    Device: {provider:s}, Avg Infer Times: {total:.2f}ms"))
 
 def colorstr(*input):
     # Colors a string https://en.wikipedia.org/wiki/ANSI_escape_code, i.e.  colorstr('blue', 'hello world')
@@ -125,17 +223,6 @@ def colorstr(*input):
         'bold': '\033[1m',
         'underline': '\033[4m'}
     return ''.join(colors[x] for x in args) + f'{string}' + colors['end']
-
-def file_size(path: str):
-    # Return file/dir size (MB)
-    mb = 1 << 20  # bytes to MiB (1024 ** 2)
-    path = Path(path)
-    if path.is_file():
-        return path.stat().st_size / mb
-    elif path.is_dir():
-        return sum(f.stat().st_size for f in path.glob('**/*') if f.is_file()) / mb
-    else:
-        return 0.0
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -180,7 +267,13 @@ def parse_args():
         type=Path,
         help="The path to class names file.",
     )
-    parser.add_argument("--half", action="store_true", help="conver to fp16")
+    parser.add_argument(
+        "--calib_image_dir",
+        type=Path,
+        help="The calibrate data required for conversion to int8, if None will use dynamic quantization",
+    )
+    parser.add_argument("--int8", action="store_true", help="Conver to int8")
+    parser.add_argument("--half", action="store_true", help="Conver to fp16")
     parser.add_argument("-op", "--opset", type=int, default=12, help="opset version")
     parser.add_argument(
         "-s",
@@ -201,8 +294,10 @@ def parse_args():
         parse_arg.output_dir = ROOT.joinpath(parse_arg.input_model)
 
     parse_arg.output_dir = parse_arg.output_dir.resolve().absolute()
-
     parse_arg.output_dir.mkdir(parents=True, exist_ok=True)
+
+    if parse_arg.calib_image_dir is not None:
+        parse_arg.calib_image_dir = parse_arg.calib_image_dir.resolve().absolute()
 
     parse_arg.img_size *= 2 if len(parse_arg.img_size) == 1 else 1  # expand
 
@@ -219,12 +314,12 @@ def parse_args():
         parse_arg.class_names = classes
     return parse_arg
 
-def export(input_model, img_size, output_model, checkpoint_path, opset, class_names, half, **kwargs):
+def export(input_model, img_size, output_base, checkpoint_path, opset, class_names, half, int8, calibration_dataset_path=None, **kwargs):
     t = time.time()
     from super_gradients.training import models
 
     # Load PyTorch model
-    print(colorstr("Loading pytorch path [%s] with torch %s..." %(input_model, torch.__version__) ))
+    print(colorstr("Loading pytorch version [%s] with torch %s..." %(input_model, torch.__version__) ))
     if checkpoint_path is None:
         model = models.get(input_model, pretrained_weights="coco")
         labels = model._class_names  # get class names
@@ -268,10 +363,11 @@ def export(input_model, img_size, output_model, checkpoint_path, opset, class_na
             onnx_model_fp32 = onnx.load_from_string(f.getvalue())  # load onnx model
             onnx.checker.check_model(onnx_model_fp32)  # check onnx model
 
+        # Simplify
         try:
             import onnxsim
-
             print(colorstr("Starting to simplify onnx with %s..." % onnxsim.__version__))
+
             onnx_model_fp32, check = onnxsim.simplify(onnx_model_fp32)
             assert check, "assert check failed"
         except ImportError:
@@ -279,19 +375,20 @@ def export(input_model, img_size, output_model, checkpoint_path, opset, class_na
                 "onnxsim is not found, if you want to simplify the onnx, "
                 + "you should install it:\n\t"
                 + "pip install -U onnxsim onnxruntime\n"
-                + "then use:\n\t"
-                + f'python -m onnxsim "{output_model}" "{output_model}"'
             )
         except Exception as e:
-            print(colorstr('red', f'Eexport failure ❌ : {e}'))
-            exit()
+            print(colorstr('red', f'Simplify onnx export failure ❌ : {e}'))
 
-        # Convert to float16
+        onnx.save(onnx_model_fp32, output_base+"_fp32.onnx")
+
+        # --------------------- Convert to float16 --------------------- 
         if half:
             try:
                 import onnxconverter_common
                 print(colorstr(f'Starting to convert float16 with onnxconverter_common {onnxconverter_common.__version__}...'))
-                onnx_model_fp16 = float16.convert_float_to_float16(onnx_model_fp32, op_block_list=["Softmax", "ReduceMax", "ConvTranspose"])
+
+                onnx_model_fp16 = float16.convert_float_to_float16(onnx_model_fp32, op_block_list=["Softmax", "ReduceMax"])
+                onnx.save(onnx_model_fp16, output_base+"_fp16.onnx")
             except ImportError:
                 print(
                     "onnxconverter_common is not found, if you want to quant the onnx, "
@@ -299,26 +396,62 @@ def export(input_model, img_size, output_model, checkpoint_path, opset, class_na
                     + "pip install -U onnxconverter_common\n"
                 )
             except Exception as e:
-                print(colorstr('red', f'Eexport failure ❌ : {e}'))
+                print(colorstr('red', f'Half onnx export failure ❌ : {e}'))
                 exit()
-        
-        onnx.save(onnx_model_fp16 if half else onnx_model_fp32, output_model)
-        print(colorstr('bright_magenta', "ONNX export success ✅ , saved as:\n\t%s" % output_model))
+
+        # --------------------- Convert to int8 --------------------- 
+        if int8 :
+            try:
+                print(colorstr(f'Starting to convert int8 with quantize_static...'))
+
+                nodes = [n.name for n in onnx_model_fp32.graph.node]
+                exclude_nodes = []
+                for n in nodes :
+                    if re.findall("ReduceMax|Sofmax|Concat", n) :
+                        exclude_nodes.append(n)
+
+                if calibration_dataset_path != None and calibration_dataset_path.is_dir():
+                    dr = DataReader(str(calibration_dataset_path), output_base+"_fp32.onnx")
+                    onnx_model_int8 = quantize_static(output_base+"_fp32.onnx",
+                                                        output_base+"_int8.onnx",
+                                                        dr,
+                                                        nodes_to_exclude=exclude_nodes,
+                                                        quant_format=QuantFormat.QDQ,
+                                                        activation_type=QuantType.QUInt8,
+                                                        weight_type=QuantType.QUInt8)
+                else :
+                    print(colorstr('yellow', f"Calibration dataset path is not exist. can't use static quantization."))
+                    onnx_model_int8 = quantize_dynamic(output_base+"_fp32.onnx",
+                                                        output_base+"_int8.onnx",
+                                                        nodes_to_exclude=exclude_nodes,
+                                                        weight_type=QuantType.QUInt8)
+            except Exception as e:
+                print(colorstr('red', f'Int8 onnx export failure ❌ : {e}'))
+                exit()
+
+        # Testing inference speed
+        times = 10
+        print(colorstr('bright_cyan', f"testing average of {times} inference speed"))
+        benchmark(output_base+"_fp32.onnx", times)
+        if half or int8 :
+            if half :
+                benchmark(output_base+"_fp16.onnx", times)
+                print(colorstr('bright_magenta', "ONNX export Float16 success ✅ , saved as:\n\t%s" % output_base+"_fp16.onnx"))
+            if int8 :
+                benchmark(output_base+"_int8.onnx", times)
+                print(colorstr('bright_magenta', "ONNX export Int8 success ✅ , saved as:\n\t%s" % output_base+"_int8.onnx"))
+            os.remove(output_base+"_fp32.onnx")
+        else :
+            print(colorstr('bright_magenta', "ONNX export Float32 success ✅ , saved as:\n\t%s" % output_base+"_fp32.onnx"))
 
     except Exception as e:
         print(colorstr('red', f'Eexport failure ❌ : {e}'))
         exit()
 
-    # generate anchors and sides
-    anchors = []
 
-    # generate masks
-    masks = dict()
-
-    print(colorstr('bright_magenta', "anchors:\n\t%s" % anchors))
-    print(colorstr('bright_magenta', "anchor_masks:\n\t%s" % masks))
+    print(colorstr('bright_magenta', "fpn_strides:\n\t%s" % str(model.heads.fpn_strides)))
     print(colorstr('bright_magenta', "num_classes:\n\t%s" % model.num_classes))
-    export_json = output_model.with_suffix(".json")
+    export_json = Path(output_base + ".json")
     export_json.write_text(
         json.dumps(
             {
@@ -329,8 +462,7 @@ def export(input_model, img_size, output_model, checkpoint_path, opset, class_na
                     "NN_specific_metadata": {
                         "classes": model.num_classes,
                         "coordinates": 4,
-                        "anchors": anchors,
-                        "anchor_masks": masks,
+                        "fpn_strides":  str(model.heads.fpn_strides),
                         "iou_threshold": 0.3,
                         "confidence_threshold": 0.5,
                     },
@@ -350,7 +482,5 @@ if __name__ == "__main__":
     args = parse_args()
     print(colorstr(args))
 
-    output_model = Path.joinpath(args.output_dir, args.input_model + ("_fp16" if args.half else "_fp32") + ".onnx")
-    export(output_model=output_model, **vars(args))
-
-
+    output_base_name = Path.joinpath(args.output_dir, args.input_model)
+    export(output_base=str(output_base_name), calibration_dataset_path=args.calib_image_dir, **vars(args))
