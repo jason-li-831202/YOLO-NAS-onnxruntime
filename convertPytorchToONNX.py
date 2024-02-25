@@ -131,10 +131,10 @@ class DetectNAS(nn.Module):
     def _batch_distance2bbox(self, points, distance) :
         lt, rb = torch.split(distance, 2, dim=-1)
         # while tensor add parameters, parameters should be better placed on the second place
-        x1y1 = -lt + points
-        x2y2 = rb + points
+        x1y1 = points - lt
+        x2y2 = points + rb
         wh = x2y2 - x1y1
-        cxcy = x1y1 + wh/2
+        cxcy = (x2y2 + x1y1) / 2
         return torch.cat([cxcy, wh], dim=-1)
 
     def forward(self, feats):
