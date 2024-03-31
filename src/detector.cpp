@@ -72,6 +72,7 @@ void YOLODetector::getInputDetails(Ort::AllocatorWithDefaultOptions allocator)
 {
     inputType = this->session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetElementType();
     LOG(INFO) << "---------------- Input info --------------";
+    LOG(DEBUG) << "Type: " << ToString(inputType);
     this->isDynamicInputShape = false;
     for (int layer=0; layer < this->session.GetInputCount(); layer+=1)
     {
@@ -106,6 +107,7 @@ void YOLODetector::getOutputDetails(Ort::AllocatorWithDefaultOptions allocator)
 {
     outputType = this->session.GetOutputTypeInfo(0).GetTensorTypeAndShapeInfo().GetElementType();
     LOG(INFO) << "--------------- Output info --------------";
+    LOG(DEBUG) << "Type: " << ToString(outputType);
     for (int layer=0; layer < this->session.GetOutputCount(); layer+=1)
     {
         #if ORT_API_VERSION < 13
@@ -126,7 +128,7 @@ void YOLODetector::getOutputDetails(Ort::AllocatorWithDefaultOptions allocator)
     }
 }
 
-void YOLODetector::getBestClassInfo(std::vector<float>::iterator it, const int& numClasses,
+void YOLODetector::getBestClassInfo(float* it, const int& numClasses,
                                     float& bestConf, int& bestClassId)
 {
     // first 5 element are box and obj confidence
@@ -155,8 +157,7 @@ void YOLODetector::preprocessing(cv::Mat &image, float*& blob, std::vector<int64
     inputTensorShape[2] = resizedImage.rows;
     inputTensorShape[3] = resizedImage.cols;
 
-    LOG(DEBUG) << "ori image shape (h, w):  "<< image.rows << " " << image.cols;
-    LOG(DEBUG) << "resize image shape (h, w):  "<< resizedImage.rows << " " << resizedImage.cols;
+    LOG(DEBUG) << "resize image shape (H,W):  ("<< image.rows << ", " << image.cols << ") -> (" << resizedImage.rows << ", " << resizedImage.cols << ")";
     if (this->num_class == 80) 
         resizedImage.convertTo(floatImage, CV_32FC3, 1 / 255.0);
     else 
@@ -185,41 +186,31 @@ std::vector<Detection> YOLODetector::postprocessing(const cv::Size& resizedImage
     for (int layer=0; layer < output_node_dims.size(); layer+=1)
     {
         std::vector<int64_t> outputShape = output_node_dims[layer];
-        int elementsInBatch = (int)(output_node_dims[layer][1] * output_node_dims[layer][2]); 
-        size_t count = outputTensors[layer].GetTensorTypeAndShapeInfo().GetElementCount();
-        std::vector<float> outputValues;
 
+        cv::Mat outputMatFP32;
         if (outputType == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16){
-            const Ort::Float16_t * rawOutput = outputTensors[layer].GetTensorData<Ort::Float16_t>();
-            std::vector<uint16_t> outputTensorValuesFp16(rawOutput, rawOutput + count);
-            for (auto fp16 : outputTensorValuesFp16)
-            {
-                outputValues.push_back(float16_to_float32(fp16));
-            }
+            auto * rawOutput = outputTensors[layer].GetTensorMutableData<Ort::Float16_t>();
+            cv::Mat outputMaFP16 = cv::Mat(cv::Size((int)outputShape[2], (int)outputShape[1]), CV_16F, rawOutput); //.t() : if you want [bs, class+5, ny*nx]=>[bs, ny*nx, class+5];
+            outputMaFP16.convertTo(outputMatFP32, CV_32F);
         }else{
-            const float * rawOutput = outputTensors[layer].GetTensorData<float>();
-            std::vector<float> outputTensorValuesFp32(rawOutput, rawOutput + count);
-            for (auto fp32 : outputTensorValuesFp32)
-            {
-                outputValues.push_back(fp32);
-            }
+            float * rawOutput = outputTensors[layer].GetTensorMutableData<float>();
+            outputMatFP32 = cv::Mat(cv::Size((int)outputShape[2], (int)outputShape[1]), CV_32F, rawOutput); //.t() : if you want [bs, class+5, ny*nx]=>[bs, ny*nx, class+5];
         }
 
-        LOG(DEBUG) << "elementsInBatch :" << elementsInBatch;
-        // only for batch size = 1
-        for (auto it = outputValues.begin(); it != outputValues.begin() + elementsInBatch; it += output_node_dims[layer][2])
+        float* outputValues = (float*)outputMatFP32.data;
+        for (int r = 0; r < outputShape[1]; r++)
         {
-            float clsConf = it[4];
+            float clsConf = outputValues[4];
             if (clsConf > confThreshold)
             {
-                int width = (int) (it[2]);
-                int height = (int) (it[3]);
-                int left = (int) (it[0] - width/2);
-                int top = (int) (it[1]- height/2);
-                
+                int width = (int) (outputValues[2]);
+                int height = (int) (outputValues[3]);
+                int left = (int) (outputValues[0] - width/2);
+                int top = (int) (outputValues[1]- height/2);
+
                 float objConf;
                 int classId;
-                this->getBestClassInfo(it, this->num_class, objConf, classId);
+                this->getBestClassInfo(outputValues, this->num_class, objConf, classId);
 
                 float confidence = clsConf * objConf;
 
@@ -227,6 +218,7 @@ std::vector<Detection> YOLODetector::postprocessing(const cv::Size& resizedImage
                 confs.emplace_back(confidence);
                 classIds.emplace_back(classId);
             }
+            outputValues += outputShape[2];
         }
     }
     std::vector<int> indices;
@@ -252,12 +244,20 @@ std::vector<Detection> YOLODetector::postprocessing(const cv::Size& resizedImage
 std::vector<Detection> YOLODetector::detectFrame(cv::Mat &image, const float& confThreshold = 0.4,
                                             const float& iouThreshold = 0.45)
 {
+    double preprocess_time = 0.0;
+    double inference_time = 0.0;
+    double postprocess_time = 0.0;
+
+    // 1. preprocess
+    Timer preprocess_timer = Timer(preprocess_time);
     float *blob = nullptr;
     std::vector<int64_t> inputTensorShape {1, 3, -1, -1};
     this->preprocessing(image,  blob, inputTensorShape);
+    preprocess_timer.Stop();
 
+    // 2. inference
+    Timer inference_timer = Timer(inference_time);
     size_t inputTensorSize = utils::vectorProduct(inputTensorShape);
-
     std::vector<float> inputTensorValues(blob, blob + inputTensorSize);
     Ort::MemoryInfo memoryInfo = Ort::MemoryInfo::CreateCpu(
             OrtAllocatorType::OrtArenaAllocator, OrtMemType::OrtMemTypeDefault);
@@ -285,14 +285,20 @@ std::vector<Detection> YOLODetector::detectFrame(cv::Mat &image, const float& co
                                                               inputNames.size(),
                                                               outputNames.data(),
                                                               outputNames.size() );
+    inference_timer.Stop();
 
+    // 3. postprocess
+    Timer postprocess_timer = Timer(postprocess_time);
     cv::Size resizedShape = cv::Size((int)inputTensorShape[3], (int)inputTensorShape[2]);
     std::vector<Detection> result = this->postprocessing(resizedShape,
                                                          image.size(),
                                                          outputTensors,
                                                          confThreshold, iouThreshold);
+    postprocess_timer.Stop();
 
+    LOG(DEBUG) << "Preprocess Speed: " << (preprocess_time * 1000.0) << "ms.";
+    LOG(DEBUG) << "Inference Speed: " << (inference_time * 1000.0) << "ms.";
+    LOG(DEBUG) << "Postprocess Speed: " << (postprocess_time * 1000.0) << "ms.";
     delete[] blob;
-
     return result;
 }

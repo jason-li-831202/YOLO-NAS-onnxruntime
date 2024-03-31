@@ -1,6 +1,7 @@
 #pragma once
 #include <codecvt>
 #include <fstream>
+#include <unordered_map>
 #include <opencv2/opencv.hpp>
 #include "log.h"
 
@@ -16,6 +17,17 @@ typedef struct RGB {
     double g;
     double b;
 } RGB1;
+
+class Timer {
+    public:
+        Timer(double& accumulator, bool isEnabled = true);
+        void Stop();
+
+    private:
+        double& accumulator;
+        bool isEnabled;
+        std::chrono::time_point<std::chrono::high_resolution_clock> start;
+};
 
 namespace utils
 {

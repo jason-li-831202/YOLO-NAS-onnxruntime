@@ -8,6 +8,30 @@
 static uint16_t float32_to_float16(float& input_fp32);
 static float float16_to_float32(uint16_t& input_fp16);
 
+inline const char* ToString(ONNXTensorElementDataType v)
+{
+    switch (v)
+    {
+        case  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT   : return "FLOAT" ;      // maps to c type float
+        case  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8   : return "UINT8" ;      // maps to c type uint8_t
+        case  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8    : return "INT8"  ;      // maps to c type int8_t
+        case  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16  : return "UINT16";      // maps to c type uint16_t
+        case  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16   : return "INT16" ;      // maps to c type int16_t
+        case  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32   : return "INT32" ;      // maps to c type int32_t
+        case  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64   : return "INT64" ;      // maps to c type int64_t
+        case  ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING  : return "STRING" ;     // maps to c++ type std::string
+        case  ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL    : return "BOOL" ;  
+        case  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 : return "FLOAT16" ;  
+        case  ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE  : return "DOUBLE" ;      // maps to c type double
+        case  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32  : return "UINT32" ;      // maps to c type uint32_t
+        case  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64  : return "UINT64" ;      // maps to c type uint64_t
+        case  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64: return "COMPLEX64" ;  // complex with float32 real and imaginary components
+        case  ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128: return "COMPLEX128"; // complex with float64 real and imaginary components
+        case  ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16: return "BFLOAT16" ;    // Non-IEEE floating-point format based on IEEE754 single-precision
+        default:      return "UNDEFINED";
+    }
+}
+
 class YOLODetector
 {
 public:
@@ -42,7 +66,7 @@ private:
                                           std::vector<Ort::Value>& outputTensors,
                                           const float& confThreshold, const float& iouThreshold);
 
-    static void getBestClassInfo(std::vector<float>::iterator it, const int& numClasses,
+    static void getBestClassInfo(float* it, const int& numClasses,
                                  float& bestConf, int& bestClassId); 
 
 };

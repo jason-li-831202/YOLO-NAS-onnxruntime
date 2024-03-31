@@ -1,5 +1,21 @@
 #include "utils.h"
 
+Timer::Timer(double& accumulator, bool isEnabled)
+    : accumulator(accumulator), isEnabled(isEnabled) {
+    if (isEnabled) {
+        start = std::chrono::high_resolution_clock::now();
+    }
+}
+
+// Stop the timer and update the accumulator
+void Timer::Stop() {
+    if (isEnabled) {
+        auto end = std::chrono::high_resolution_clock::now();
+        double duration = std::chrono::duration<double>(end - start).count();
+        accumulator += duration;
+    }
+}
+
 void hexToString(char str[], int length)
 {
   //hexadecimal characters
