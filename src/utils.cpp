@@ -164,14 +164,14 @@ void utils::drawDetectOnFrame(cv::Mat& image, std::vector<Detection>& detections
 
         utils::cornerRect(image, detection.box, classColors[classId]);
         int baseline = 0;
-        cv::Size size = cv::getTextSize(label, cv::FONT_ITALIC, 0.8, 2, &baseline);
+        cv::Size size = cv::getTextSize(label, cv::FONT_ITALIC, 0.45, 2, &baseline);
         cv::rectangle(image,
-                      cv::Point(x-3, y - 30), cv::Point(x + size.width, y-5),
+                      cv::Point(x-3, y - 20), cv::Point(x + size.width, y-5),
                       classColors[classId], -1);
 
         cv::putText(image, label,
                     cv::Point(x, y - 8), cv::FONT_ITALIC,
-                    0.8, cv::Scalar(255, 255, 255), 2);
+                    0.45, cv::Scalar(255, 255, 255), 2);
     }
 }
 
@@ -226,7 +226,7 @@ void utils::letterBox(const cv::Mat& image, cv::Mat& outImage,
     cv::copyMakeBorder(outImage, outImage, top, bottom, left, right, cv::BORDER_CONSTANT, color);
 }
 
-void utils::scaleCoords(const cv::Size& imageShape, cv::Rect& coords, const cv::Size& imageOriginalShape)
+void utils::scaleCoords(cv::Rect& coords, const cv::Size& imageShape, const cv::Size& imageOriginalShape)
 {
     float gain = std::min((float)imageShape.height / (float)imageOriginalShape.height,
                           (float)imageShape.width / (float)imageOriginalShape.width);

@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "utils.h"
+#include "nms.h"
 
 static uint16_t float32_to_float16(float& input_fp32);
 static float float16_to_float32(uint16_t& input_fp16);

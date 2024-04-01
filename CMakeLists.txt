@@ -10,7 +10,8 @@ include_directories("include/")
 add_executable(demo
                src/main.cpp
                src/detector.cpp
-               src/utils.cpp)
+               src/utils.cpp
+               src/nms.cpp)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

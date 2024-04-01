@@ -22,7 +22,7 @@ int main(int argc, char* argv[])
     cmd.add<std::string>("model_path", 'm', "Path to onnx model.", true, "yolov5.onnx");
     cmd.add<std::string>("source", 's', "Source to be detected.", true, "video.mp4");
     cmd.add<std::string>("class_names", 'c', "Path to class names file.", true, "coco.names");
-    cmd.add<std::string>("score_thres", '\0', "Confidence threshold for categories.", false, "0.3f");
+    cmd.add<std::string>("score_thres", '\0', "Confidence threshold for categories.", false, "0.35f");
     cmd.add<std::string>("iou_thres", '\0', "Overlap threshold.", false, "0.4f");
 
     cmd.add("gpu", '\0', "Inference on cuda device.");

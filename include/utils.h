@@ -53,7 +53,7 @@ namespace utils
                    bool scaleUp,
                    int stride);
 
-    void scaleCoords(const cv::Size& imageShape, cv::Rect& box, const cv::Size& imageOriginalShape);
+    void scaleCoords(cv::Rect& box, const cv::Size& imageShape, const cv::Size& imageOriginalShape);
     template <typename T>
     T clip(const T& n, const T& lower, const T& upper);
 }

@@ -157,7 +157,8 @@ void YOLODetector::preprocessing(cv::Mat &image, float*& blob, std::vector<int64
     inputTensorShape[2] = resizedImage.rows;
     inputTensorShape[3] = resizedImage.cols;
 
-    LOG(DEBUG) << "resize image shape (H,W):  ("<< image.rows << ", " << image.cols << ") -> (" << resizedImage.rows << ", " << resizedImage.cols << ")";
+    LOG(DEBUG) << "resize image shape (H,W):  ("<< image.rows << ", " << image.cols << ") -> (" 
+               << resizedImage.rows << ", " << resizedImage.cols << ")";
     if (this->num_class == 80) 
         resizedImage.convertTo(floatImage, CV_32FC3, 1 / 255.0);
     else 
@@ -200,8 +201,8 @@ std::vector<Detection> YOLODetector::postprocessing(const cv::Size& resizedImage
         float* outputValues = (float*)outputMatFP32.data;
         for (int r = 0; r < outputShape[1]; r++)
         {
-            float clsConf = outputValues[4];
-            if (clsConf > confThreshold)
+            float clsConf = outputValues[4]; // outputValues[4] = max(outputValue[5:]) First, check if objConf has a score greater than 0.1f.
+            if (clsConf > 0.1f)
             {
                 int width = (int) (outputValues[2]);
                 int height = (int) (outputValues[3]);
@@ -212,29 +213,29 @@ std::vector<Detection> YOLODetector::postprocessing(const cv::Size& resizedImage
                 int classId;
                 this->getBestClassInfo(outputValues, this->num_class, objConf, classId);
 
-                float confidence = clsConf * objConf;
-
                 boxes.emplace_back(left, top, width, height);
-                confs.emplace_back(confidence);
+                confs.emplace_back(objConf);
                 classIds.emplace_back(classId);
             }
             outputValues += outputShape[2];
         }
     }
     std::vector<int> indices;
-    cv::dnn::NMSBoxes(boxes, confs, confThreshold, iouThreshold, indices);
-    LOG(DEBUG) << "amount of NMS indices: " << indices.size();
+    // cv::dnn::NMSBoxes(boxes, confs, confThreshold, iouThreshold, indices);
+    // nms::nms_boxes(boxes, confs, confThreshold, iouThreshold, indices);
+    nms::soft_nms_boxes(boxes, confs, confThreshold, iouThreshold, indices);
+    LOG(DEBUG) << "Amount of NMS indices: " << indices.size();
 
     std::vector<Detection> detections;
 
     for (int idx : indices)
     {
         Detection det;
-        det.box = cv::Rect(boxes[idx]);
-        utils::scaleCoords(resizedImageShape, det.box, originalImageShape);
-
+        utils::scaleCoords(boxes[idx], resizedImageShape, originalImageShape);
+        det.box = boxes[idx];
         det.conf = confs[idx];
         det.classId = classIds[idx];
+
         detections.emplace_back(det);
     }
 
